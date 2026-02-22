@@ -1,40 +1,94 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Real-Time Face Landmark Detection</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .container {
-            text-align: center;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            border: 2px solid #667eea;
-        }
-    </style>
+  <title>Real-Time Web AR Filter</title>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <style>
+    body { 
+      margin: 0; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+      background-color: #1a1a1a; 
+    }
+    .container { position: relative; }
+    /* Hide the raw webcam feed, we only want to show the canvas with AR */
+    .input_video { display: none; } 
+    /* Flip the canvas so it acts like a mirror */
+    .output_canvas { transform: scaleX(-1); border-radius: 12px; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Real-Time Face Landmark Detection</h1>
-        <img src="{{ url_for('video_feed') }}" alt="Face Detection Stream">
-    </div>
+
+  <div class="container">
+    <video class="input_video" autoplay playsinline></video>
+    <canvas class="output_canvas" width="640" height="480"></canvas>
+  </div>
+
+  <script>
+    const videoElement = document.getElementsByClassName('input_video')[0];
+    const canvasElement = document.getElementsByClassName('output_canvas')[0];
+    const canvasCtx = canvasElement.getContext('2d');
+
+    // This function runs every time the AI detects a face
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      
+      // Draw the raw video frame onto the canvas
+      canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      
+      if (results.multiFaceLandmarks) {
+        for (const landmarks of results.multiFaceLandmarks) {
+          
+          // --- AR LOGIC STARTS HERE ---
+          // Landmark 1 is the tip of the nose
+          const noseTip = landmarks[1];
+          
+          // Convert percentages to exact pixel coordinates
+          const cx = noseTip.x * canvasElement.width;
+          const cy = noseTip.y * canvasElement.height;
+
+          // Draw the red "clown nose"
+          canvasCtx.beginPath();
+          canvasCtx.arc(cx, cy, 35, 0, 2 * Math.PI);
+          canvasCtx.fillStyle = 'red';
+          canvasCtx.fill();
+          
+          // Add AR Text
+          canvasCtx.font = "bold 30px Arial";
+          canvasCtx.fillStyle = "yellow";
+          canvasCtx.fillText("AR Mode", cx - 60, cy - 60);
+          // --- AR LOGIC ENDS HERE ---
+        }
+      }
+      canvasCtx.restore();
+    }
+
+    // Initialize MediaPipe Face Mesh
+    const faceMesh = new FaceMesh({locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }});
+    
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+
+    // Turn on the webcam and feed it to MediaPipe
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await faceMesh.send({image: videoElement});
+      },
+      width: 640,
+      height: 480
+    });
+    camera.start();
+  </script>
 </body>
 </html>
